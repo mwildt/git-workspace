@@ -2,12 +2,14 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
 	"path"
+	"strings"
 	"uuid"
 
 	"github.com/mwildt/git-workspace/pkg/gitlab"
@@ -149,12 +151,16 @@ func (s *Server) PostWorkspaceInit(writer http.ResponseWriter, request *http.Req
 }
 
 func (g *Git) Clone(url string, path string, branch string) error {
-	slog.Default().Info("cloning", url, "to", path, "branch", branch)
+	slog.Default().Info("cloning", "url", url, "to", path, "branch", branch)
 	cmd := exec.Command("git", "clone", "--branch", branch, url, path)
 	cmd.Env = append(os.Environ())
-	err := cmd.Run()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return err
+		outputStr := strings.TrimSpace(string(output))
+		if outputStr != "" {
+			return fmt.Errorf("git clone failed: %s (output: %s)", err.Error(), outputStr)
+		}
+		return fmt.Errorf("git clone failed: %s", err.Error())
 	}
 	return nil
 }

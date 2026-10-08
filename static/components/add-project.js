@@ -121,10 +121,7 @@ customElements.define('gw-add-project', class extends LitElement {
                             <div class="section">
                                 <h4>Zielpfad festlegen</h4>
                                 <span class="description">Hier wird das Projekt ausgecheckt</span>
-                                <gw-input 
-                                    .value=${this.model.path || ''}
-                                    @input=${(e) => this.model = { ...this.model, path: e.detail.value }}
-                                >
+                                <gw-input .value=${this.model.path || ''} @input=${(e) => this.model = { ...this.model, path: e.target.value }} >
                                     <span slot="label">Pfad</span>
                                 </gw-input>
                             </div>

@@ -163,8 +163,8 @@ customElements.define('gw-workspace', class extends LitElement {
                             </div>
                             ${this.errors.map(error => html`<gw-error-message .error=${error}></gw-error-message>`)}
                         </div>
-                    `
-                    : this.projects.length > 0
+                    ` : undefined }
+                ${this.projects.length > 0
                         ? html`
                             <div class="project-list">
                                 ${this.projects.map(project => html`
@@ -208,8 +208,23 @@ customElements.define('gw-workspace', class extends LitElement {
     }
 
     async initialize() {
-        const response = await fetch('/api/workspace/init', {
-            method: 'POST'
-        });
+        this.initializing = true;
+        this.errors = [];
+
+        try {
+            const response = await fetch('/api/workspace/init', {
+                method: 'POST'
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                this.errors = data.errors || [];
+            }
+        } catch (error) {
+            this.errors = [{ message: 'Netzwerkfehler: ' + error.message }];
+        } finally {
+            this.initializing = false;
+        }
     }
 });
