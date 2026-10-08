@@ -1,9 +1,12 @@
 import { LitElement, html, css } from '../lit.js';
 import './atomic/button.js';
+import './atomic/error-message.js';
 
 customElements.define('gw-workspace', class extends LitElement {
     static properties = {
-        projects: {}
+        projects: {},
+        errors: {},
+        initializing: { type: Boolean }
     };
 
     static styles = css`
@@ -13,6 +16,7 @@ customElements.define('gw-workspace', class extends LitElement {
             background-color: white;
             border-radius: 12px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            padding: 24px;
         }
 
         h4 {
@@ -92,11 +96,46 @@ customElements.define('gw-workspace', class extends LitElement {
             color: #999;
             font-style: italic;
         }
+
+        .status-message {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin: 16px 0;
+            font-size: 14px;
+        }
+
+        .success {
+            background-color: #e8f5e8;
+            color: #2E7D32;
+            border-left: 4px solid #4CAF50;
+        }
+
+        .loading {
+            background-color: #e3f2fd;
+            color: #1976D2;
+            border-left: 4px solid #2196F3;
+        }
+
+        .errors-container {
+            margin: 16px 0;
+        }
+
+        .error-summary {
+            background-color: #ffebee;
+            color: #c62828;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            font-weight: 600;
+            border-left: 4px solid #f44336;
+        }
     `;
 
     constructor() {
         super();
         this.projects = [];
+        this.errors = [];
+        this.initializing = false;
 
         this.addEventListener('gw-add-project::success', async () => {
             await this.reload();
@@ -114,31 +153,42 @@ customElements.define('gw-workspace', class extends LitElement {
             
             <gw-add-project></gw-add-project>
             
-            ${this.projects.length > 0
-                ? html`
-                    <div class="project-list">
-                        ${this.projects.map(project => html`
-                            <div class="project-item">
-                                <div class="project-info">
-                                    <h5>${project.path}</h5>
-                                    <div class="project-meta">
-                                        <span>${project.git_url}</span>
-                                        <span>::</span>
-                                        <span>${project.branch}</span>
-                                    </div>
-                                </div>
-                                <span 
-                                    class="remove-btn"
-                                    @click=${() => this.removeProject(project)}
-                                >Entfernen</span>
+            ${this.initializing
+                ? html`<div class="status-message loading">Initialisiere Projekte...</div>`
+                : this.errors && this.errors.length > 0
+                    ? html`
+                        <div class="errors-container">
+                            <div class="error-summary">
+                                ${this.errors.length} Fehler beim Initialisieren aufgetreten
                             </div>
-                        `)}
-                    </div>
-                    <div class="actions">
-                        <gw-button @click=${() => this.initialize()}>Initialize</gw-button>
-                    </div>
-                `
-                : html`<div class="empty-state">Keine Projekte vorhanden. Fügen Sie ein Projekt hinzu.</div>`}
+                            ${this.errors.map(error => html`<gw-error-message .error=${error}></gw-error-message>`)}
+                        </div>
+                    `
+                    : this.projects.length > 0
+                        ? html`
+                            <div class="project-list">
+                                ${this.projects.map(project => html`
+                                    <div class="project-item">
+                                        <div class="project-info">
+                                            <h5>${project.path}</h5>
+                                            <div class="project-meta">
+                                                <span>${project.git_url}</span>
+                                                <span>::</span>
+                                                <span>${project.branch}</span>
+                                            </div>
+                                        </div>
+                                        <span 
+                                            class="remove-btn"
+                                            @click=${() => this.removeProject(project)}
+                                        >Entfernen</span>
+                                    </div>
+                                `)}
+                            </div>
+                            <div class="actions">
+                                <gw-button @click=${() => this.initialize()}>Initialize</gw-button>
+                            </div>
+                        `
+                        : html`<div class="empty-state">Keine Projekte vorhanden. Fügen Sie ein Projekt hinzu.</div>`}
         `;
     }
 

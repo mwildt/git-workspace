@@ -117,10 +117,34 @@ func (s *Server) DeleteWorkspaceProject(writer http.ResponseWriter, request *htt
 
 }
 
+type InitResponse struct {
+	Success bool     `json:"success"`
+	Errors  []ErrorInfo `json:"errors,omitempty"`
+}
+
+type ErrorInfo struct {
+	ProjectId string `json:"projectId"`
+	ProjectPath string `json:"projectPath"`
+	Message string `json:"message"`
+}
+
 func (s *Server) PostWorkspaceInit(writer http.ResponseWriter, request *http.Request) {
-	err := s.workspace.Initialize(&Git{})
-	if err != nil {
-		slog.Default().Error("Error initializing workspace", "error", err)
+	errors := s.workspace.Initialize(&Git{})
+	
+	response := InitResponse{
+		Success: len(errors) == 0,
+		Errors:  errors,
+	}
+	
+	writer.Header().Set("Content-Type", "application/json")
+	if response.Success {
+		writer.WriteHeader(http.StatusOK)
+	} else {
+		writer.WriteHeader(http.StatusPartialContent)
+	}
+	
+	if err := json.NewEncoder(writer).Encode(response); err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
 	}
 }
 
@@ -146,14 +170,19 @@ func (w *Workspace) AddProject(path string, gitUrl string, branch string) {
 	w.projects = append(w.projects, Project{Path: path, GitUrl: gitUrl, Branch: branch, Id: uuid.New()})
 }
 
-func (w *Workspace) Initialize(git *Git) error {
+func (w *Workspace) Initialize(git *Git) []ErrorInfo {
+	var errors []ErrorInfo
 	for _, project := range w.projects {
 		path := path.Join(w.baseDir, project.Path)
 		if err := git.Clone(project.GitUrl, path, project.Branch); err != nil {
-			return err
+			errors = append(errors, ErrorInfo{
+				ProjectId:   project.Id.String(),
+				ProjectPath: project.Path,
+				Message:    err.Error(),
+			})
 		}
 	}
-	return nil
+	return errors
 }
 
 func (w *Workspace) DeleteProjectById(id string) error {
