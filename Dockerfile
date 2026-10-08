@@ -1,8 +1,7 @@
-FROM alpine:3.20 AS builder
+FROM golang:1.27-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache \
-    go=1.27.0 \
     git \
     ca-certificates \
     && update-ca-certificates
