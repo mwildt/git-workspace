@@ -3,17 +3,62 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>jansvca</title>
+    <title>Git Workspace</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .page-title {
+            color: #2E7D32;
+            margin-bottom: 8px;
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .page-subtitle {
+            color: #666;
+            font-size: 16px;
+            margin-bottom: 24px;
+        }
+
+
+        @media (max-width: 768px) {
+            .header-content {
+                flex-direction: column;
+                gap: 16px;
+                text-align: center;
+            }
+
+        }
+    </style>
 </head>
 <body>
+    <gw-header></gw-header>
+    
+    <div class="container">
+        <h1 class="page-title">Workspace Verwaltung</h1>
+        <p class="page-subtitle">Durchsuche deine Git-Projekte und erstelle deinen Arbeitsbereich</p>
+        
+        <gw-workspace></gw-workspace>
+    </div>
 
-<h1>Git Workspace</h1>
-
-<h2>Compose New Workspace</h2>
-
-<gw-workspace></gw-workspace>
-
-<script type="module" src="/static/index.js"></script>
+    <script type="module" src="/static/index.js"></script>
 </body>
 </html>

@@ -1,3 +1,7 @@
 import './lit.js'
+import './components/atomic/button.js'
+import './components/atomic/input.js'
+import './components/atomic/selectable.js'
+import './components/atomic/header.js'
 import './components/workspace.js'
 import './components/add-project.js'

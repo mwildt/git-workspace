@@ -1,20 +1,93 @@
 import { LitElement, html, css } from '../lit.js';
+import './atomic/button.js';
+import './atomic/input.js';
+import './atomic/selectable.js';
 
-customElements.define('gw-add-project',  class extends LitElement {
-
+customElements.define('gw-add-project', class extends LitElement {
     static properties = {
-        model : {},
-        projects : {},
-        branches : {}
-    }
-
+        model: {},
+        projects: {},
+        branches: {}
+    };
 
     static styles = css`
-        .selectable { padding: 6px 10px; cursor: pointer; }
-        .selected { background: #d0e4ff; font-weight: 600; }
-`;
+        :host {
+            display: block;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 24px;
+            background-color: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
 
+        h4 {
+            color: #2E7D32;
+            margin: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            border-bottom: 2px solid #e8f5e8;
+            padding-bottom: 8px;
+        }
 
+        .section {
+            margin-bottom: 20px;
+        }
+
+        .description {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        .actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        .cancel-btn {
+            --button-type: secondary;
+        }
+
+        pre {
+            background-color: #f5f5f5;
+            padding: 12px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 12px;
+            margin: 16px 0;
+            color: #333;
+        }
+
+        .selectable-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            margin: 8px 0;
+        }
+
+        .selectable-list::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .selectable-list::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        .selectable-list::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 4px;
+        }
+
+        .selectable-list::-webkit-scrollbar-thumb:hover {
+            background: #a1a1a1;
+        }
+    `;
 
     constructor() {
         super();
@@ -27,56 +100,75 @@ customElements.define('gw-add-project',  class extends LitElement {
     render() {
         return html`
             ${this.model !== undefined
-                    ? html`
+                ? html`
+                    <div class="section">
+                        <h4>Projekt auswählen</h4>
+                        <div class="selectable-list">
+                            ${this.projects && this.projects.map(project => html`
+                                <gw-selectable 
+                                    ?selected=${project.id === this.model.project?.id}
+                                    @click=${() => this.selectProject(project)}
+                                >
+                                    <span slot="primary">${project.name}</span>
+                                    <span slot="secondary">${project.web_url}</span>
+                                </gw-selectable>
+                            `)}
+                        </div>
+                    </div>
 
-                        
-                        <h4>Project Wählen</h4>
-                        ${this.projects && this.projects.map(project => html`
-                            
-                            <div class="selectable ${project == this.model.project ? "selected" : ""}"  @click=${() => this.selectProject(project)}>
-                                <span>${project.name}</span>
-                                <span>${project.web_url}</span>
+                    ${this.model.project !== undefined
+                        ? html`
+                            <div class="section">
+                                <h4>Zielpfad festlegen</h4>
+                                <span class="description">Hier wird das Projekt ausgecheckt</span>
+                                <gw-input 
+                                    .value=${this.model.path || ''}
+                                    @input=${(e) => this.model = { ...this.model, path: e.detail.value }}
+                                >
+                                    <span slot="label">Pfad</span>
+                                </gw-input>
                             </div>
-                        `)}
 
-                        ${this.model.project !== undefined
-                            ? html`
-                                <h4>Pfad Wählen</h4>
-                                <span>Hier wird das Projekt nachher ausgecheckt</span>
-                                <input type="text"  .value=${this.model ? this.model.path : undefined} @input=${e => this.model = {...this.model, path: e.target.value}} />
+                            <div class="section">
+                                <h4>Branch auswählen</h4>
+                                <div class="selectable-list">
+                                    ${this.branches && this.branches.map(branch => html`
+                                        <gw-selectable 
+                                            ?selected=${branch.name === this.model.branch?.name}
+                                            @click=${() => this.selectBranch(branch)}
+                                        >
+                                            <span slot="primary">${branch.name}</span>
+                                        </gw-selectable>
+                                    `)}
+                                </div>
+                            </div>
 
+                            <pre>${JSON.stringify(this.model, null, 2)}</pre>
 
-                                <h4>Branch Wählen</h4>
-                                ${this.branches && this.branches.map(branch => html`
-                                    <div class="selectable ${branch == this.model.branch ? "selected" : ""}" @click=${() => this.selectBranch(branch)}>
-                                        <span>${branch.name}</span>
-                                    </div>
-                                `)}`
-                            : undefined}
-
-                        <pre >${JSON.stringify(this.model)}</pre>
-
-                        <button @click=${() => this.submit()}>Hinzufügen</button>
-                        <button @click=${() => this.model = undefined}>Abbrechen</button>
-                    `
-                    : html`<button @click=${() => this.start()}>Hinzufügen</button>`
-        } 
-         
-    `;
+                            <div class="actions">
+                                <gw-button @click=${() => this.submit()}>Hinzufügen</gw-button>
+                                <gw-button type="secondary" @click=${() => this.model = undefined}>Abbrechen</gw-button>
+                            </div>
+                        `
+                        : undefined}
+                `
+                : html`<gw-button @click=${() => this.start()}>Projekt hinzufügen</gw-button>`}
+        `;
     }
 
     async selectBranch(branch) {
-        this.model = {...this.model, branch, }
+        this.model = { ...this.model, branch };
     }
 
     async selectProject(project) {
-        this.model = {...this.model, project, path: project.path_with_namespace }
-        this.branches = undefined
+        this.model = { ...this.model, project, path: project.path_with_namespace };
+        this.branches = undefined;
         const response = await fetch(`/api/gitlab/project/${project.id}/branches`);
         this.branches = await response.json();
     }
+
     async start() {
-        this.model = {}
+        this.model = {};
         const response = await fetch('/api/gitlab/project');
         this.projects = await response.json();
     }
@@ -95,7 +187,6 @@ customElements.define('gw-add-project',  class extends LitElement {
             composed: true,
         }));
 
-        this.model = undefined
-
+        this.model = undefined;
     }
-})
+});
