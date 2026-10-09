@@ -319,9 +319,9 @@ func (w *Workspace) ProjectsStatus() []ProjectStatus {
 	statuses := make([]ProjectStatus, 0, len(w.projects))
 	for _, project := range w.projects {
 		statuses = append(statuses, ProjectStatus{
-			Project:      project,
-			Initialized:  isGitRepo(path.Join(w.baseDir, project.Path)),
-			HasChanges:   hasGitChanges(path.Join(w.baseDir, project.Path)),
+			Project:     project,
+			Initialized: isGitRepo(path.Join(w.baseDir, project.Path)),
+			HasChanges:  hasGitChanges(path.Join(w.baseDir, project.Path)),
 		})
 	}
 	return statuses
@@ -529,7 +529,7 @@ func main() {
 	handler := setupHandlers(&server, staticDir)
 
 	srv := &http.Server{
-		Addr:              ":" + config.Port,
+		Addr:              config.Port,
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
