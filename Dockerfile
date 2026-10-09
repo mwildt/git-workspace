@@ -39,7 +39,7 @@ RUN addgroup -g 1001 -S appuser && \
     adduser -S -u 1001 -G appuser appuser
 
 # Create directories
-RUN mkdir -p /app /data
+RUN mkdir -p /app /data /certs && chown appuser:appuser /certs
 
 # Copy built binaries from builder stage
 COPY --from=builder --chown=appuser:appuser /app/git-workspace /app/git-workspace
