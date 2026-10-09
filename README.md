@@ -53,6 +53,7 @@ docker run -d \
 |----------|--------------|---------|
 | `PORT` | Server-Port | 8080 |
 | `GIT_TOKEN` | GitLab Personal Access Token (erforderlich) | - |
+| `ACCESS_TOKEN` | Access-Token für Login/Session-Schutz. Wenn gesetzt, sind alle API-Endpunkte geschützt | - |
 | `GITLAB_URL` | GitLab-Instanz URL | https://gitlab.com |
 | `WORKSPACE_BASE_DIR` | Basisverzeichnis für Workspaces | ~/.git-workspace |
 | `STATIC_DIR` | Pfad zu statischen Dateien | ./static |
@@ -75,6 +76,14 @@ export RETRY_DELAY_SECONDS="10"
 ```
 
 ## API Endpunkte
+
+### Auth
+
+| Methode | Endpunkt | Beschreibung |
+|---------|----------|--------------|
+| POST | `/api/auth/login` | Login mit `{"token": "..."}` – eröffnet eine Session (Cookie) |
+| POST | `/api/auth/logout` | Session beenden |
+| GET | `/api/auth/session` | Session-Status abfragen |
 
 ### GitLab
 
