@@ -36,9 +36,8 @@ customElements.define('gw-app', class extends LitElement {
     async connectedCallback() {
         super.connectedCallback();
         await this.checkSession();
-        this.addEventListener('gw-login::success', async () => {
+        this.addEventListener('gw-login::success', () => {
             this.authenticated = true;
-            await this.reloadWorkspace();
         });
     }
 
@@ -54,29 +53,17 @@ customElements.define('gw-app', class extends LitElement {
         }
     }
 
-    async reloadWorkspace() {
-        const workspace = this.renderRoot.querySelector('gw-workspace');
-        if (workspace) {
-            await workspace.reload();
-        }
-    }
-
     render() {
-        if (this.checking) {
-            return html`<gw-header></gw-header>`;
-        }
-        if (!this.authenticated) {
-            return html`
-                <gw-header></gw-header>
-                <gw-login></gw-login>
-            `;
-        }
         return html`
             <gw-header></gw-header>
             <div class="container">
-                <h1 class="page-title">Workspace Verwaltung</h1>
-                <p class="page-subtitle">Durchsuche deine Git-Projekte und erstelle deinen Arbeitsbereich</p>
-                <gw-workspace></gw-workspace>
+                ${this.authenticated
+                    ? html`
+                        <h1 class="page-title">Workspace Verwaltung</h1>
+                        <p class="page-subtitle">Durchsuche deine Git-Projekte und erstelle deinen Arbeitsbereich</p>
+                        <gw-workspace></gw-workspace>
+                    `
+                    : html`<gw-login></gw-login>`}
             </div>
         `;
     }

@@ -11,21 +11,15 @@ customElements.define('gw-login', class extends LitElement {
     static styles = css`
         :host {
             display: block;
-            position: fixed;
-            inset: 0;
-            background-color: rgba(0, 0, 0, 0.5);
-            z-index: 1000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
         .card {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: min(400px, 90vw);
+            max-width: 400px;
+            margin: 48px auto 0 auto;
             padding: 32px;
             background-color: white;
             border-radius: 12px;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
         h3 {
             color: #2E7D32;
