@@ -1,12 +1,15 @@
 package gitlab
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 )
 
@@ -107,4 +110,55 @@ func NewClient(token string, baseUrlString string) *Client {
 		Token: token,
 		HTTP:  &http.Client{Timeout: 15 * time.Second},
 	}
+}
+
+func NewTLSConfig(rootCaFile string, rootCaDir string) (*tls.Config, error) {
+	tlsConfig := &tls.Config{}
+	if rootCaFile != "" {
+		pem, err := os.ReadFile(rootCaFile)
+		if err != nil {
+			return nil, fmt.Errorf("gitlab: failed to read root ca file %s: %w", rootCaFile, err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pem) {
+			return nil, fmt.Errorf("gitlab: no valid certificate found in root ca file %s", rootCaFile)
+		}
+		slog.Info("gitlab: loaded custom root ca", "file", rootCaFile)
+		tlsConfig.RootCAs = pool
+	}
+	if rootCaDir != "" {
+		entries, err := os.ReadDir(rootCaDir)
+		if err != nil {
+			return nil, fmt.Errorf("gitlab: failed to read root ca dir %s: %w", rootCaDir, err)
+		}
+		pool := tlsConfig.RootCAs
+		if pool == nil {
+			pool, err = x509.SystemCertPool()
+			if err != nil {
+				return nil, fmt.Errorf("gitlab: failed to load system cert pool: %w", err)
+			}
+		}
+		loaded := 0
+		for _, entry := range entries {
+			if entry.IsDir() {
+					continue
+			}
+			pem, err := os.ReadFile(fmt.Sprintf("%s/%s", rootCaDir, entry.Name()))
+			if err != nil {
+				slog.Warn("gitlab: failed to read ca file", "file", entry.Name(), "error", err)
+				continue
+			}
+			if pool.AppendCertsFromPEM(pem) {
+					loaded++
+			} else {
+				slog.Warn("gitlab: no valid certificate in ca file", "file", entry.Name())
+			}
+		}
+		slog.Info("gitlab: loaded ca certificates from directory", "dir", rootCaDir, "count", loaded)
+		if loaded == 0 {
+			return nil, fmt.Errorf("gitlab: no valid ca certificate found in root ca dir %s", rootCaDir)
+		}
+		tlsConfig.RootCAs = pool
+	}
+	return tlsConfig, nil
 }

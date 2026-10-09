@@ -45,6 +45,22 @@ docker run -d \
   git-workspace
 ```
 
+### Eigene Root-CA (z. B. firmeninterne GitLab-Instanz)
+
+Das Zertifikat kann per Volume-Mount in den Container eingebracht werden:
+
+```bash
+docker run -d \
+  -e GIT_TOKEN=your-gitlab-token \
+  -e GITLAB_URL=https://gitlab.example.com \
+  -e ROOT_CA_FILE=/certs/root-ca.crt \
+  -v /path/to/your/root-ca.crt:/certs/root-ca.crt:ro \
+  -p 8080:8080 \
+  git-workspace
+```
+
+Alternativ ein Verzeichnis mit mehreren CA-Zertifikaten (`ROOT_CA_DIR`) – dort werden alle PEM-Dateien geladen. Die CA gilt sowohl für die GitLab-API-Calls als auch für die Git-Operationen (clone/push).
+
 ## Konfiguration
 
 ### Environment-Variablen
@@ -61,6 +77,8 @@ docker run -d \
 | `CLONE_TIMEOUT_SECONDS` | Timeout für Git-Clone in Sekunden | 30 |
 | `MAX_RETRIES` | Maximaler Wiederholungsversuche für Clone | 3 |
 | `RETRY_DELAY_SECONDS` | Verzögerung zwischen Retries in Sekunden | 5 |
+| `ROOT_CA_FILE` | Pfad zu einer PEM-Datei mit Root-CA, die den HTTPS-Calls gegen GitLab vertraut wird (auch für Git-Operationen) | - |
+| `ROOT_CA_DIR` | Verzeichnis mit PEM-Dateien von Root-CAs (alle werden geladen) | - |
 
 ### Beispiel Konfiguration
 

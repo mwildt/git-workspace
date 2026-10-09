@@ -75,6 +75,8 @@ type (
 		CloneTimeout time.Duration
 		MaxRetries   int
 		RetryDelay   time.Duration
+		RootCaFile   string
+		RootCaDir   string
 	}
 )
 
@@ -249,7 +251,7 @@ func (g *Git) CommitAndPush(dir string, message string, branch string) error {
 	}
 	for _, args := range steps {
 		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-		cmd.Env = os.Environ()
+		cmd.Env = gitCommandEnv()
 		if output, err := cmd.CombinedOutput(); err != nil {
 			slog.Error("git command failed", "command", args[0], "dir", dir, "error", err, "output", strings.TrimSpace(string(output)))
 			return fmt.Errorf("git %s failed: %s (%s)", args[0], err.Error(), strings.TrimSpace(string(output)))
@@ -261,7 +263,7 @@ func (g *Git) CommitAndPush(dir string, message string, branch string) error {
 		branch = "HEAD"
 	} else if current, err := currentBranch(dir); err == nil && branch != current {
 		cmd := exec.Command("git", "-C", dir, "checkout", "-B", branch)
-		cmd.Env = os.Environ()
+		cmd.Env = gitCommandEnv()
 		if output, err := cmd.CombinedOutput(); err != nil {
 			slog.Error("git checkout failed", "dir", dir, "branch", branch, "currentBranch", current, "error", err, "output", strings.TrimSpace(string(output)))
 			return fmt.Errorf("git checkout failed: %s (%s)", err.Error(), strings.TrimSpace(string(output)))
@@ -271,7 +273,7 @@ func (g *Git) CommitAndPush(dir string, message string, branch string) error {
 
 	slog.Info("pushing", "dir", dir, "branch", branch)
 	cmd := exec.Command("git", "-C", dir, "push", "-u", "origin", branch)
-	cmd.Env = os.Environ()
+	cmd.Env = gitCommandEnv()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		slog.Error("git push failed", "dir", dir, "branch", branch, "error", err, "output", strings.TrimSpace(string(output)))
@@ -279,6 +281,17 @@ func (g *Git) CommitAndPush(dir string, message string, branch string) error {
 	}
 	slog.Info("push succeeded", "dir", dir, "branch", branch)
 	return nil
+}
+
+func gitCommandEnv() []string {
+	env := os.Environ()
+	if caFile := os.Getenv("ROOT_CA_FILE"); caFile != "" {
+		env = append(env, "GIT_SSL_CAINFO="+caFile)
+	}
+	if caDir := os.Getenv("ROOT_CA_DIR"); caDir != "" {
+		env = append(env, "GIT_SSL_CAPATH="+caDir)
+	}
+	return env
 }
 
 func currentBranch(dir string) (string, error) {
@@ -303,7 +316,7 @@ func (g *Git) Clone(url string, path string, branch string) error {
 		defer cancel()
 
 		cmd := exec.CommandContext(ctx, "git", "clone", "--branch", branch, "--depth", "1", url, path)
-		cmd.Env = os.Environ()
+		cmd.Env = gitCommandEnv()
 		output, err := cmd.CombinedOutput()
 
 		if err == nil {
@@ -465,6 +478,12 @@ func loadConfig() Config {
 			config.RetryDelay = time.Duration(seconds) * time.Second
 		}
 	}
+	if rootCaFile := os.Getenv("ROOT_CA_FILE"); rootCaFile != "" {
+		config.RootCaFile = rootCaFile
+	}
+	if rootCaDir := os.Getenv("ROOT_CA_DIR"); rootCaDir != "" {
+		config.RootCaDir = rootCaDir
+	}
 
 	return config
 }
@@ -557,9 +576,21 @@ func main() {
 		os.Exit(1)
 	}
 
+	gitlabHTTPClient := &http.Client{Timeout: 15 * time.Second}
+	if config.RootCaFile != "" || config.RootCaDir != "" {
+		tlsConfig, err := gitlab.NewTLSConfig(config.RootCaFile, config.RootCaDir)
+		if err != nil {
+			logger.Error("failed to configure root ca", "rootCaFile", config.RootCaFile, "rootCaDir", config.RootCaDir, "error", err)
+			os.Exit(1)
+		}
+		gitlabHTTPClient.Transport = &http.Transport{TLSClientConfig: tlsConfig}
+	}
+	gitlabClient := gitlab.NewClient(config.GitToken, config.GitLabURL)
+	gitlabClient.HTTP = gitlabHTTPClient
+
 	server := Server{
 		workspace:    NewWorkspace(config.BaseDir),
-		gitlabClient: gitlab.NewClient(config.GitToken, config.GitLabURL),
+		gitlabClient: gitlabClient,
 		auth:         auth.NewManager(config.AccessToken),
 	}
 
