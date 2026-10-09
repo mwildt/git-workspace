@@ -5,7 +5,7 @@ customElements.define('gw-input', class extends LitElement {
         value: { type: String, reflect: true },
         type: { type: String, reflect: true },
         placeholder: { type: String, reflect: true },
-        disabled: { type: Boolean, reflect: true }
+        disabled: { type: Boolean, reflect: true },
     };
 
     static styles = css`
@@ -61,6 +61,15 @@ customElements.define('gw-input', class extends LitElement {
         }));
     }
 
+    handleChange(e) {
+        this.value = e.target.value;
+        this.dispatchEvent(new CustomEvent('change', {
+            detail: { value: this.value },
+            bubbles: true,
+            composed: true
+        }));
+    }
+
     render() {
         return html`
             <label><slot name="label"></slot></label>
@@ -70,6 +79,7 @@ customElements.define('gw-input', class extends LitElement {
                 placeholder=${this.placeholder}
                 ?disabled=${this.disabled}
                 @input=${this.handleInput}
+                @change=${this.handleChange}
             >
         `;
     }
