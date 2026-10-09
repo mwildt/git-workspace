@@ -1,12 +1,18 @@
 import { LitElement, html, css } from '../lit.js';
 import './atomic/button.js';
 import './atomic/error-message.js';
+import './atomic/input.js';
 
 customElements.define('gw-workspace', class extends LitElement {
     static properties = {
         projects: {},
         errors: {},
-        initializing: { type: Boolean }
+        initializing: { type: Boolean },
+        commitProject: {},
+        commitMessage: {},
+        commitBranch: {},
+        committing: { type: Boolean },
+        commitError: {}
     };
 
     static styles = css`
@@ -108,6 +114,42 @@ customElements.define('gw-workspace', class extends LitElement {
             color: #1565C0;
         }
 
+        .commit-form {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 12px;
+            margin: 8px 0;
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            border-left: 4px solid #4CAF50;
+        }
+
+        .commit-form-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .commit-error {
+            color: #c62828;
+            font-size: 13px;
+        }
+
+        .commit-btn {
+            color: #1976D2;
+            cursor: pointer;
+            font-size: 12px;
+            text-decoration: underline;
+            transition: color 0.2s ease;
+            margin-left: 16px;
+        }
+
+        .commit-btn:hover {
+            color: #1565C0;
+        }
+
         .remove-btn {
             color: #f44336;
             cursor: pointer;
@@ -172,6 +214,11 @@ customElements.define('gw-workspace', class extends LitElement {
         this.projects = [];
         this.errors = [];
         this.initializing = false;
+        this.commitProject = null;
+        this.commitMessage = '';
+        this.commitBranch = '';
+        this.committing = false;
+        this.commitError = null;
 
         this.addEventListener('gw-add-project::success', async () => {
             await this.reload();
@@ -223,6 +270,40 @@ customElements.define('gw-workspace', class extends LitElement {
                                                     : html`<span class="badge clean">Keine Änderungen</span>`)
                                                 : undefined}
                                         </div>
+                                        ${project.initialized && project.has_changes
+                                            ? (this.commitProject && this.commitProject.id === project.id
+                                                ? html`
+                                                    <div class="commit-form">
+                                                        <gw-input
+                                                            placeholder="Commit Message"
+                                                            .value=${this.commitMessage}
+                                                            @input=${e => this.commitMessage = e.detail.value}
+                                                        ></gw-input>
+                                                        <gw-input
+                                                            placeholder="Zielbranch (optional, Default: HEAD)"
+                                                            .value=${this.commitBranch}
+                                                            @input=${e => this.commitBranch = e.detail.value}
+                                                        ></gw-input>
+                                                        ${this.commitError
+                                                            ? html`<span class="commit-error">${this.commitError}</span>`
+                                                            : undefined}
+                                                        <div class="commit-form-actions">
+                                                            <gw-button
+                                                                .disabled=${this.committing || !this.commitMessage}
+                                                                @click=${() => this.commitAndPush(project)}
+                                                            >${this.committing ? 'Commite...' : 'Commit & Push'}</gw-button>
+                                                            <span
+                                                                class="remove-btn"
+                                                                @click=${() => this.closeCommitForm()}
+                                                            >Abbrechen</span>
+                                                        </div>
+                                                    </div>
+                                                `
+                                                : html`<span
+                                                    class="commit-btn"
+                                                    @click=${() => this.openCommitForm(project)}
+                                                >Commit</span>`)
+                                            : undefined}
                                         <span 
                                             class="remove-btn"
                                             @click=${() => this.removeProject(project)}
@@ -236,6 +317,46 @@ customElements.define('gw-workspace', class extends LitElement {
                         `
                         : html`<div class="empty-state">Keine Projekte vorhanden. Fügen Sie ein Projekt hinzu.</div>`}
         `;
+    }
+
+    openCommitForm(project) {
+        this.commitProject = project;
+        this.commitMessage = '';
+        this.commitBranch = '';
+        this.commitError = null;
+    }
+
+    closeCommitForm() {
+        this.commitProject = null;
+        this.commitError = null;
+    }
+
+    async commitAndPush(project) {
+        this.committing = true;
+        this.commitError = null;
+
+        try {
+            const response = await fetch(`/api/workspace/project/${project.id}/commit`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: this.commitMessage,
+                    branch: this.commitBranch
+                })
+            });
+
+            if (!response.ok) {
+                this.commitError = `Commit fehlgeschlagen (HTTP ${response.status})`;
+                return;
+            }
+
+            this.closeCommitForm();
+            await this.reload();
+        } catch (error) {
+            this.commitError = 'Netzwerkfehler: ' + error.message;
+        } finally {
+            this.committing = false;
+        }
     }
 
     async removeProject(project) {
