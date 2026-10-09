@@ -17,6 +17,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/mwildt/git-workspace/pkg/auth"
 	"github.com/mwildt/git-workspace/pkg/gitlab"
 )
 
@@ -47,7 +48,7 @@ type (
 	}
 
 	Git struct {
-		maxRetries    int
+		maxRetries   int
 		retryDelay   time.Duration
 		cloneTimeout time.Duration
 	}
@@ -55,6 +56,7 @@ type (
 	Server struct {
 		workspace    *Workspace
 		gitlabClient *gitlab.Client
+		auth         *auth.Manager
 	}
 
 	Config struct {
@@ -62,6 +64,7 @@ type (
 		BaseDir      string
 		GitLabURL    string
 		GitToken     string
+		AccessToken  string
 		LogLevel     string
 		CloneTimeout time.Duration
 		MaxRetries   int
@@ -139,36 +142,36 @@ func (s *Server) DeleteWorkspaceProject(writer http.ResponseWriter, request *htt
 }
 
 type InitResponse struct {
-	Success bool     `json:"success"`
+	Success bool        `json:"success"`
 	Errors  []ErrorInfo `json:"errors,omitempty"`
 }
 
 type ErrorInfo struct {
-	ProjectId string `json:"projectId"`
+	ProjectId   string `json:"projectId"`
 	ProjectPath string `json:"projectPath"`
-	Message string `json:"message"`
+	Message     string `json:"message"`
 }
 
 func (s *Server) PostWorkspaceInit(writer http.ResponseWriter, request *http.Request) {
 	git := &Git{
-		maxRetries:    3,
+		maxRetries:   3,
 		retryDelay:   5 * time.Second,
 		cloneTimeout: 30 * time.Second,
 	}
 	errors := s.workspace.Initialize(git)
-	
+
 	response := InitResponse{
 		Success: len(errors) == 0,
 		Errors:  errors,
 	}
-	
+
 	writer.Header().Set("Content-Type", "application/json")
 	if response.Success {
 		writer.WriteHeader(http.StatusOK)
 	} else {
 		writer.WriteHeader(http.StatusPartialContent)
 	}
-	
+
 	if err := json.NewEncoder(writer).Encode(response); err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 	}
@@ -176,33 +179,33 @@ func (s *Server) PostWorkspaceInit(writer http.ResponseWriter, request *http.Req
 
 func (g *Git) Clone(url string, path string, branch string) error {
 	slog.Info("cloning", "url", url, "to", path, "branch", branch)
-	
+
 	var lastErr error
 	for i := 0; i <= g.maxRetries; i++ {
 		if i > 0 {
 			slog.Info("retrying clone", "attempt", i+1, "url", url)
 			time.Sleep(g.retryDelay)
 		}
-		
+
 		ctx, cancel := context.WithTimeout(context.Background(), g.cloneTimeout)
 		defer cancel()
-		
+
 		cmd := exec.CommandContext(ctx, "git", "clone", "--branch", branch, "--depth", "1", url, path)
 		cmd.Env = os.Environ()
 		output, err := cmd.CombinedOutput()
-		
+
 		if err == nil {
 			return nil
 		}
-		
+
 		lastErr = err
 		slog.Warn("clone attempt failed", "attempt", i+1, "error", err, "output", string(output))
-		
+
 		if ctx.Err() == context.DeadlineExceeded {
 			break
 		}
 	}
-	
+
 	outputStr := strings.TrimSpace(string([]byte{}))
 	if lastErr != nil {
 		if outputStr != "" {
@@ -229,7 +232,7 @@ func (w *Workspace) AddProject(path string, gitUrl string, branch string) {
 func (w *Workspace) Initialize(git *Git) []ErrorInfo {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
-	
+
 	var errors []ErrorInfo
 	for _, project := range w.projects {
 		projectPath := path.Join(w.baseDir, project.Path)
@@ -237,7 +240,7 @@ func (w *Workspace) Initialize(git *Git) []ErrorInfo {
 			errors = append(errors, ErrorInfo{
 				ProjectId:   project.Id.String(),
 				ProjectPath: project.Path,
-				Message:    fmt.Sprintf("failed to create directory: %s", err.Error()),
+				Message:     fmt.Sprintf("failed to create directory: %s", err.Error()),
 			})
 			continue
 		}
@@ -245,7 +248,7 @@ func (w *Workspace) Initialize(git *Git) []ErrorInfo {
 			errors = append(errors, ErrorInfo{
 				ProjectId:   project.Id.String(),
 				ProjectPath: project.Path,
-				Message:    err.Error(),
+				Message:     err.Error(),
 			})
 		}
 	}
@@ -255,7 +258,7 @@ func (w *Workspace) Initialize(git *Git) []ErrorInfo {
 func (w *Workspace) DeleteProjectById(id string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	
+
 	for i, project := range w.projects {
 		if project.Id.String() == id {
 			w.projects = append(w.projects[:i], w.projects[i+1:]...)
@@ -271,6 +274,7 @@ func loadConfig() Config {
 		BaseDir:      path.Join(os.Getenv("HOME"), ".git-workspace"),
 		GitLabURL:    "https://gitlab.com",
 		GitToken:     os.Getenv("GIT_TOKEN"),
+		AccessToken:  os.Getenv("ACCESS_TOKEN"),
 		LogLevel:     "info",
 		CloneTimeout: 30 * time.Second,
 		MaxRetries:   3,
@@ -331,12 +335,20 @@ func setupLogger(level string) *slog.Logger {
 func setupHandlers(server *Server, staticDir string) http.Handler {
 	handler := http.NewServeMux()
 
-	handler.HandleFunc("GET /api/gitlab/project/{projectid}/branches", server.GetRepoBranches)
-	handler.HandleFunc("GET /api/gitlab/project", server.GetProjects)
-	handler.HandleFunc("GET /api/workspace", server.GetWorkspace)
-	handler.HandleFunc("POST /api/workspace/init", server.PostWorkspaceInit)
-	handler.HandleFunc("POST /api/workspace/project", server.PostWorkspaceProject)
-	handler.HandleFunc("DELETE /api/workspace/project/{projectId}", server.DeleteWorkspaceProject)
+	handler.HandleFunc("POST /api/auth/login", server.auth.Login)
+	handler.HandleFunc("POST /api/auth/logout", server.auth.Logout)
+
+	protected := http.NewServeMux()
+	protected.HandleFunc("GET /api/auth/session", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	protected.HandleFunc("GET /api/gitlab/project/{projectid}/branches", server.GetRepoBranches)
+	protected.HandleFunc("GET /api/gitlab/project", server.GetProjects)
+	protected.HandleFunc("GET /api/workspace", server.GetWorkspace)
+	protected.HandleFunc("POST /api/workspace/init", server.PostWorkspaceInit)
+	protected.HandleFunc("POST /api/workspace/project", server.PostWorkspaceProject)
+	protected.HandleFunc("DELETE /api/workspace/project/{projectId}", server.DeleteWorkspaceProject)
+	handler.Handle("/api/", server.auth.Middleware(protected))
 
 	handler.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
 
@@ -344,10 +356,6 @@ func setupHandlers(server *Server, staticDir string) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-	})
-
-	handler.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusNotFound, struct{ Message string }{Message: "Not Found"})
 	})
 
 	handler.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
@@ -375,6 +383,7 @@ func main() {
 	server := Server{
 		workspace:    NewWorkspace(config.BaseDir),
 		gitlabClient: gitlab.NewClient(config.GitToken, config.GitLabURL),
+		auth:         auth.NewManager(config.AccessToken),
 	}
 
 	staticDir := "./static"
@@ -393,7 +402,7 @@ func main() {
 		IdleTimeout:       120 * time.Second,
 	}
 
-	logger.Info("starting server", "port", config.Port, "baseDir", config.BaseDir, "gitLabURL", config.GitLabURL)
+	logger.Info("starting server", "port", config.Port, "baseDir", config.BaseDir, "gitLabURL", config.GitLabURL, "authEnabled", config.AccessToken != "")
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -404,7 +413,7 @@ func main() {
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
-	
+
 	<-quit
 	logger.Info("shutting down server")
 
