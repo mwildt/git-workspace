@@ -43,6 +43,7 @@ RUN mkdir -p /app /data
 
 # Copy built binaries from builder stage
 COPY --from=builder --chown=appuser:appuser /app/git-workspace /app/git-workspace
+COPY --from=builder --chown=appuser:appuser /app/static /app/static
 COPY --from=builder --chown=appuser:appuser /tmp/git-askpass /usr/local/bin/git-askpass
 
 # Set permissions
