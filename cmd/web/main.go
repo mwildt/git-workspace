@@ -79,16 +79,19 @@ type (
 )
 
 func (s *Server) GetProjects(w http.ResponseWriter, r *http.Request) {
-	if projects, err := s.gitlabClient.ListProjects(); err != nil {
+	projects, err := s.gitlabClient.ListProjects()
+	if err != nil {
+		slog.Error("failed to list gitlab projects", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-	} else {
+		return
+	}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 
-		if err := json.NewEncoder(w).Encode(projects); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
+	if err := json.NewEncoder(w).Encode(projects); err != nil {
+		slog.Error("failed to encode projects response", "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
@@ -97,22 +100,26 @@ func (s *Server) GetWorkspace(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 
 	if err := json.NewEncoder(w).Encode(s.workspace.ProjectsStatus()); err != nil {
+		slog.Error("failed to encode workspace response", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
 func (s *Server) GetRepoBranches(w http.ResponseWriter, request *http.Request) {
 	projectid := request.PathValue("projectid")
-	if projects, err := s.gitlabClient.ListBranches(projectid); err != nil {
+	branches, err := s.gitlabClient.ListBranches(projectid)
+	if err != nil {
+		slog.Error("failed to list branches", "projectId", projectid, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-	} else {
+		return
+	}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 
-		if err := json.NewEncoder(w).Encode(projects); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
+	if err := json.NewEncoder(w).Encode(branches); err != nil {
+		slog.Error("failed to encode branches response", "projectId", projectid, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
@@ -129,11 +136,13 @@ func (s *Server) PostWorkspaceProject(writer http.ResponseWriter, request *http.
 
 	err := json.NewDecoder(request.Body).Decode(&project)
 	if err != nil {
+		slog.Warn("invalid JSON in add project request", "error", err)
 		http.Error(writer, "invalid JSON", http.StatusBadRequest)
 		return
 	}
 
 	s.workspace.AddProject(project.Path, project.Project.GitUrl, project.Branch.Name)
+	slog.Info("project added to workspace", "path", project.Path, "gitUrl", project.Project.GitUrl, "branch", project.Branch.Name)
 	writer.WriteHeader(http.StatusCreated)
 }
 
@@ -165,6 +174,9 @@ func (s *Server) PostWorkspaceInit(writer http.ResponseWriter, request *http.Req
 		cloneTimeout: 30 * time.Second,
 	}
 	errors := s.workspace.Initialize(git)
+	for _, e := range errors {
+		slog.Error("failed to initialize project", "projectId", e.ProjectId, "projectPath", e.ProjectPath, "error", e.Message)
+	}
 
 	response := InitResponse{
 		Success: len(errors) == 0,
@@ -179,6 +191,7 @@ func (s *Server) PostWorkspaceInit(writer http.ResponseWriter, request *http.Req
 	}
 
 	if err := json.NewEncoder(writer).Encode(response); err != nil {
+		slog.Error("failed to encode init response", "error", err)
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -193,10 +206,12 @@ func (s *Server) PostWorkspaceProjectCommit(writer http.ResponseWriter, request 
 
 	var body CommitRequest
 	if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+		slog.Warn("invalid JSON in commit request", "projectId", projectId, "error", err)
 		http.Error(writer, "invalid JSON", http.StatusBadRequest)
 		return
 	}
 	if strings.TrimSpace(body.Message) == "" {
+		slog.Warn("commit rejected: message is required", "projectId", projectId)
 		http.Error(writer, "message is required", http.StatusBadRequest)
 		return
 	}
@@ -206,8 +221,10 @@ func (s *Server) PostWorkspaceProjectCommit(writer http.ResponseWriter, request 
 		retryDelay:   5 * time.Second,
 		cloneTimeout: 30 * time.Second,
 	}
+	slog.Info("committing and pushing", "projectId", projectId, "branch", body.Branch)
 	if err := s.workspace.CommitAndPush(git, projectId, body.Message, body.Branch); err != nil {
 		if err == NotFound {
+			slog.Warn("project not found for commit", "projectId", projectId)
 			http.Error(writer, err.Error(), http.StatusNotFound)
 			return
 		}
@@ -234,8 +251,10 @@ func (g *Git) CommitAndPush(dir string, message string, branch string) error {
 		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
 		cmd.Env = os.Environ()
 		if output, err := cmd.CombinedOutput(); err != nil {
+			slog.Error("git command failed", "command", args[0], "dir", dir, "error", err, "output", strings.TrimSpace(string(output)))
 			return fmt.Errorf("git %s failed: %s (%s)", args[0], err.Error(), strings.TrimSpace(string(output)))
 		}
+		slog.Debug("git command succeeded", "command", args[0], "dir", dir)
 	}
 
 	if branch == "" {
@@ -244,8 +263,10 @@ func (g *Git) CommitAndPush(dir string, message string, branch string) error {
 		cmd := exec.Command("git", "-C", dir, "checkout", "-B", branch)
 		cmd.Env = os.Environ()
 		if output, err := cmd.CombinedOutput(); err != nil {
+			slog.Error("git checkout failed", "dir", dir, "branch", branch, "currentBranch", current, "error", err, "output", strings.TrimSpace(string(output)))
 			return fmt.Errorf("git checkout failed: %s (%s)", err.Error(), strings.TrimSpace(string(output)))
 		}
+		slog.Info("switched branch", "dir", dir, "from", current, "to", branch)
 	}
 
 	slog.Info("pushing", "dir", dir, "branch", branch)
@@ -253,8 +274,10 @@ func (g *Git) CommitAndPush(dir string, message string, branch string) error {
 	cmd.Env = os.Environ()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		slog.Error("git push failed", "dir", dir, "branch", branch, "error", err, "output", strings.TrimSpace(string(output)))
 		return fmt.Errorf("git push failed: %s (%s)", err.Error(), strings.TrimSpace(string(output)))
 	}
+	slog.Info("push succeeded", "dir", dir, "branch", branch)
 	return nil
 }
 
@@ -288,18 +311,16 @@ func (g *Git) Clone(url string, path string, branch string) error {
 		}
 
 		lastErr = err
-		slog.Warn("clone attempt failed", "attempt", i+1, "error", err, "output", string(output))
+		outputStr := strings.TrimSpace(string(output))
+		slog.Warn("clone attempt failed", "attempt", i+1, "url", url, "path", path, "error", err, "output", outputStr)
 
 		if ctx.Err() == context.DeadlineExceeded {
+			slog.Warn("clone timed out", "timeout", g.cloneTimeout.String(), "url", url, "path", path)
 			break
 		}
 	}
 
-	outputStr := strings.TrimSpace(string([]byte{}))
 	if lastErr != nil {
-		if outputStr != "" {
-			return fmt.Errorf("git clone failed after %d attempts: %s (output: %s)", g.maxRetries+1, lastErr.Error(), outputStr)
-		}
 		return fmt.Errorf("git clone failed after %d attempts: %s", g.maxRetries+1, lastErr.Error())
 	}
 	return nil
@@ -359,6 +380,7 @@ func (w *Workspace) Initialize(git *Git) []ErrorInfo {
 	for _, project := range w.projects {
 		projectPath := path.Join(w.baseDir, project.Path)
 		if err := os.MkdirAll(projectPath, 0755); err != nil {
+			slog.Error("failed to create project directory", "projectId", project.Id.String(), "projectPath", project.Path, "error", err)
 			errors = append(errors, ErrorInfo{
 				ProjectId:   project.Id.String(),
 				ProjectPath: project.Path,
@@ -367,6 +389,7 @@ func (w *Workspace) Initialize(git *Git) []ErrorInfo {
 			continue
 		}
 		if err := git.Clone(project.GitUrl, projectPath, project.Branch); err != nil {
+			slog.Error("failed to clone project", "projectId", project.Id.String(), "projectPath", project.Path, "gitUrl", project.GitUrl, "branch", project.Branch, "error", err)
 			errors = append(errors, ErrorInfo{
 				ProjectId:   project.Id.String(),
 				ProjectPath: project.Path,

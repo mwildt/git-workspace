@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
@@ -43,22 +44,28 @@ func (c *Client) ListProjects() (projects []Project, err error) {
 
 	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
+		slog.Error("gitlab: failed to build list projects request", "url", u.String(), "error", err)
 		return nil, err
 	}
 	req.Header.Set("PRIVATE-TOKEN", c.Token)
 
+	slog.Debug("gitlab: listing projects", "url", u.String())
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
+		slog.Error("gitlab: list projects request failed", "url", u.String(), "error", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		slog.Error("gitlab: list projects returned unexpected status", "url", u.String(), "status", resp.Status, "body", string(body))
 		return nil, fmt.Errorf("gitlab: %s: %s", resp.Status, body)
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {
+		slog.Error("gitlab: failed to decode list projects response", "url", u.String(), "error", err)
 		return nil, err
 	}
+	slog.Debug("gitlab: listed projects", "count", len(projects))
 	return projects, nil
 }
 
@@ -68,22 +75,28 @@ func (c *Client) ListBranches(projectid string) (branches []Branch, err error) {
 
 	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
+		slog.Error("gitlab: failed to build list branches request", "projectId", projectid, "url", u.String(), "error", err)
 		return nil, err
 	}
 	req.Header.Set("PRIVATE-TOKEN", c.Token)
 
+	slog.Debug("gitlab: listing branches", "projectId", projectid, "url", u.String())
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
+		slog.Error("gitlab: list branches request failed", "projectId", projectid, "error", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		slog.Error("gitlab: list branches returned unexpected status", "projectId", projectid, "status", resp.Status, "body", string(body))
 		return nil, fmt.Errorf("gitlab: %s: %s", resp.Status, body)
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&branches); err != nil {
+		slog.Error("gitlab: failed to decode list branches response", "projectId", projectid, "error", err)
 		return nil, err
 	}
+	slog.Debug("gitlab: listed branches", "projectId", projectid, "count", len(branches))
 	return branches, nil
 }
 
