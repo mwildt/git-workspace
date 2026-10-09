@@ -83,7 +83,7 @@ export RETRY_DELAY_SECONDS="10"
 |---------|----------|--------------|
 | POST | `/api/auth/login` | Login mit `{"token": "..."}` – eröffnet eine Session (Cookie) |
 | POST | `/api/auth/logout` | Session beenden |
-| GET | `/api/auth/session` | Session-Status abfragen |
+| GET | `/api/auth/session` | Session-Status abfragen (200 = gültige Session, 401 = keine Session) |
 
 ### GitLab
 

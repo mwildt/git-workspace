@@ -337,13 +337,11 @@ func setupHandlers(server *Server, staticDir string) http.Handler {
 
 	handler.HandleFunc("POST /api/auth/login", server.auth.Login)
 	handler.HandleFunc("POST /api/auth/logout", server.auth.Logout)
-	handler.HandleFunc("GET /api/auth/session", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]bool{"authenticated": server.auth.Session(r)})
-	})
 
 	protected := http.NewServeMux()
+	protected.HandleFunc("GET /api/auth/session", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
 	protected.HandleFunc("GET /api/gitlab/project/{projectid}/branches", server.GetRepoBranches)
 	protected.HandleFunc("GET /api/gitlab/project", server.GetProjects)
 	protected.HandleFunc("GET /api/workspace", server.GetWorkspace)

@@ -46,8 +46,7 @@ customElements.define('gw-app', class extends LitElement {
         this.checking = true;
         try {
             const response = await fetch('/api/auth/session');
-            const data = await response.json();
-            this.authenticated = !!data.authenticated;
+            this.authenticated = response.ok;
         } catch (e) {
             this.authenticated = false;
         } finally {
