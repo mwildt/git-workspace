@@ -47,6 +47,12 @@ type (
 		mu       sync.RWMutex
 	}
 
+	ProjectStatus struct {
+		Project
+		Initialized bool `json:"initialized"`
+		HasChanges  bool `json:"has_changes"`
+	}
+
 	Git struct {
 		maxRetries   int
 		retryDelay   time.Duration
@@ -90,7 +96,7 @@ func (s *Server) GetWorkspace(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
-	if err := json.NewEncoder(w).Encode(s.workspace.projects); err != nil {
+	if err := json.NewEncoder(w).Encode(s.workspace.ProjectsStatus()); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -221,6 +227,39 @@ func NewWorkspace(baseDir string) *Workspace {
 		projects: make([]Project, 0),
 		baseDir:  baseDir,
 	}
+}
+
+func (w *Workspace) ProjectsStatus() []ProjectStatus {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+
+	statuses := make([]ProjectStatus, 0, len(w.projects))
+	for _, project := range w.projects {
+		statuses = append(statuses, ProjectStatus{
+			Project:      project,
+			Initialized:  isGitRepo(path.Join(w.baseDir, project.Path)),
+			HasChanges:   hasGitChanges(path.Join(w.baseDir, project.Path)),
+		})
+	}
+	return statuses
+}
+
+func isGitRepo(dir string) bool {
+	info, err := os.Stat(path.Join(dir, ".git"))
+	return err == nil && info.IsDir()
+}
+
+func hasGitChanges(dir string) bool {
+	if !isGitRepo(dir) {
+		return false
+	}
+	cmd := exec.Command("git", "-C", dir, "status", "--porcelain")
+	output, err := cmd.Output()
+	if err != nil {
+		slog.Warn("failed to check git status", "dir", dir, "error", err)
+		return false
+	}
+	return len(strings.TrimSpace(string(output))) > 0
 }
 
 func (w *Workspace) AddProject(path string, gitUrl string, branch string) {

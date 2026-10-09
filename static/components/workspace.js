@@ -72,6 +72,42 @@ customElements.define('gw-workspace', class extends LitElement {
             font-size: 13px;
         }
 
+        .status-badges {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            align-items: flex-end;
+            margin-left: 16px;
+        }
+
+        .badge {
+            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .badge.initialized {
+            background-color: #e8f5e8;
+            color: #2E7D32;
+        }
+
+        .badge.not-initialized {
+            background-color: #f5f5f5;
+            color: #757575;
+        }
+
+        .badge.changes {
+            background-color: #fff3e0;
+            color: #EF6C00;
+        }
+
+        .badge.clean {
+            background-color: #e3f2fd;
+            color: #1565C0;
+        }
+
         .remove-btn {
             color: #f44336;
             cursor: pointer;
@@ -176,6 +212,16 @@ customElements.define('gw-workspace', class extends LitElement {
                                                 <span>::</span>
                                                 <span>${project.branch}</span>
                                             </div>
+                                        </div>
+                                        <div class="status-badges">
+                                            ${project.initialized
+                                                ? html`<span class="badge initialized">Initialisiert</span>`
+                                                : html`<span class="badge not-initialized">Nicht initialisiert</span>`}
+                                            ${project.initialized
+                                                ? (project.has_changes
+                                                    ? html`<span class="badge changes">Änderungen vorhanden</span>`
+                                                    : html`<span class="badge clean">Keine Änderungen</span>`)
+                                                : undefined}
                                         </div>
                                         <span 
                                             class="remove-btn"
