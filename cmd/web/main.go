@@ -183,6 +183,89 @@ func (s *Server) PostWorkspaceInit(writer http.ResponseWriter, request *http.Req
 	}
 }
 
+type CommitRequest struct {
+	Message string `json:"message"`
+	Branch  string `json:"branch"`
+}
+
+func (s *Server) PostWorkspaceProjectCommit(writer http.ResponseWriter, request *http.Request) {
+	projectId := request.PathValue("projectId")
+
+	var body CommitRequest
+	if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+		http.Error(writer, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(body.Message) == "" {
+		http.Error(writer, "message is required", http.StatusBadRequest)
+		return
+	}
+
+	git := &Git{
+		maxRetries:   3,
+		retryDelay:   5 * time.Second,
+		cloneTimeout: 30 * time.Second,
+	}
+	if err := s.workspace.CommitAndPush(git, projectId, body.Message, body.Branch); err != nil {
+		if err == NotFound {
+			http.Error(writer, err.Error(), http.StatusNotFound)
+			return
+		}
+		slog.Error("failed to commit and push", "projectId", projectId, "error", err)
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(writer).Encode(map[string]bool{"success": true})
+}
+
+func (g *Git) CommitAndPush(dir string, message string, branch string) error {
+	if !isGitRepo(dir) {
+		return fmt.Errorf("project is not initialized")
+	}
+
+	steps := [][]string{
+		{"add", "-A"},
+		{"commit", "-m", message},
+	}
+	for _, args := range steps {
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		cmd.Env = os.Environ()
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("git %s failed: %s (%s)", args[0], err.Error(), strings.TrimSpace(string(output)))
+		}
+	}
+
+	if branch == "" {
+		branch = "HEAD"
+	} else if current, err := currentBranch(dir); err == nil && branch != current {
+		cmd := exec.Command("git", "-C", dir, "checkout", "-B", branch)
+		cmd.Env = os.Environ()
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("git checkout failed: %s (%s)", err.Error(), strings.TrimSpace(string(output)))
+		}
+	}
+
+	slog.Info("pushing", "dir", dir, "branch", branch)
+	cmd := exec.Command("git", "-C", dir, "push", "-u", "origin", branch)
+	cmd.Env = os.Environ()
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git push failed: %s (%s)", err.Error(), strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+func currentBranch(dir string) (string, error) {
+	output, err := exec.Command("git", "-C", dir, "rev-parse", "--abbrev-ref", "HEAD").Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
 func (g *Git) Clone(url string, path string, branch string) error {
 	slog.Info("cloning", "url", url, "to", path, "branch", branch)
 
@@ -294,6 +377,18 @@ func (w *Workspace) Initialize(git *Git) []ErrorInfo {
 	return errors
 }
 
+func (w *Workspace) CommitAndPush(git *Git, projectId string, message string, branch string) error {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+
+	for _, project := range w.projects {
+		if project.Id.String() == projectId {
+			return git.CommitAndPush(path.Join(w.baseDir, project.Path), message, branch)
+		}
+	}
+	return NotFound
+}
+
 func (w *Workspace) DeleteProjectById(id string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -386,6 +481,7 @@ func setupHandlers(server *Server, staticDir string) http.Handler {
 	protected.HandleFunc("GET /api/workspace", server.GetWorkspace)
 	protected.HandleFunc("POST /api/workspace/init", server.PostWorkspaceInit)
 	protected.HandleFunc("POST /api/workspace/project", server.PostWorkspaceProject)
+	protected.HandleFunc("POST /api/workspace/project/{projectId}/commit", server.PostWorkspaceProjectCommit)
 	protected.HandleFunc("DELETE /api/workspace/project/{projectId}", server.DeleteWorkspaceProject)
 	handler.Handle("/api/", server.auth.Middleware(protected))
 
